@@ -1,77 +1,112 @@
-ml_nids_project/
+# Network Intrusion Detection System using Machine Learning
+
+This project implements a high-performance Network Intrusion Detection System (NIDS) using the **XGBoost** machine learning model. The system is trained on the benchmark NSL-KDD dataset to accurately classify network traffic as either "normal" or "attack."
+
+The project includes a complete end-to-end workflow: from data preprocessing and optimized model training to deployment as both a real-time command-line monitor and a scalable web API.
+
+## Project Structure
+
+```
+Cyber_Project/
 │
 ├── data/
-│   ├── raw/
-│   │   ├── KDDTrain+.txt
-│   │   └── KDDTest+.txt
-│   └── processed/
-│       └── cleaned_data.csv  (Optional: if you save preprocessed data)
+│   └── raw/
+│       ├── KDDTrain+.txt
+│       └── KDDTest+.txt
 │
 ├── models/
-│   └── svm_nids_model.pkl
+│   └── xgboost_nids_model.pkl
 │
 ├── notebooks/
-│   └── 1-data-exploration.ipynb
 │
 ├── src/
 │   ├── __init__.py
-│   ├── config.py
-│   ├── train.py
-│   └── predict.py
+│   ├── api.py                 # Flask API for on-demand predictions
+│   ├── config.py              # Central configuration file
+│   ├── download_data.py       # (Optional) Script to download dataset
+│   ├── predict.py             # Script for making a single prediction
+│   ├── realtime_detector.py   # Real-time network traffic monitor
+│   └── train.py               # Script for training the XGBoost model
 │
 ├── requirements.txt
-└── README.md```
+└── README.md
+```
 
----
+## Setup Instructions
 
-### **Explanation of Each File and Directory**
+### 1. Clone the Repository
+Clone this repository to your local machine.
 
-#### 📂 `data/`
-This directory holds all the data for your project. It's good practice to separate the original, untouched data from any data you modify.
-*   **`data/raw/`**: Place your original, immutable dataset files here (e.g., `KDDTrain+.txt`). You should never modify files in this folder.
-*   **`data/processed/`**: If your preprocessing steps are complex, you might save the cleaned and processed data here. This is optional but can speed up subsequent runs.
+### 2. Create a Virtual Environment (Recommended)
+It is highly recommended to create a virtual environment to keep project dependencies isolated.
 
-#### 📂 `models/`
-This folder is where you save your trained machine learning models.
-*   **`svm_nids_model.pkl`**: This is the final output of your training script. Keeping it in a dedicated folder prevents it from cluttering your main directory.
+```bash
+# Navigate to the project root directory
+cd path/to/Cyber_Project
 
-#### 📂 `notebooks/`
-This directory is for your Jupyter notebooks. Notebooks are excellent for experimentation, data exploration, and visualization, but not for the final, repeatable code.
-*   **`1-data-exploration.ipynb`**: An example notebook where you might load the data for the first time, create plots, and experiment with different features before writing the final training script.
+# Create a virtual environment
+python -m venv sklearn-env
 
-#### 📂 `src/` (Source Code)
-This is the core of your application, containing all your Python scripts. The `src` stands for "source."
-*   **`__init__.py`**: This empty file tells Python that the `src` directory is a Python package, allowing you to import scripts from it.
-*   **`config.py`**: A configuration file to store constants and settings, like file paths or model parameters. This makes your code cleaner and easier to modify.
-*   **`train.py`**: A script dedicated solely to training the model. It will load data from `data/raw/`, preprocess it, train the model, evaluate it, and save the final model object to the `models/` directory.
-*   **`predict.py`**: A script to load your saved model from `models/` and use it to make predictions on new, unseen data. This could be adapted for real-time network monitoring.
+# Activate the virtual environment
+# On Windows:
+sklearn-env\Scripts\activate
+# On macOS/Linux:
+source sklearn-env/bin/activate
+```
 
-#### 📄 `requirements.txt`
-A plain text file that lists all the Python libraries your project depends on (e.g., `pandas`, `scikit-learn`, `joblib`). This allows anyone to easily set up the necessary environment by running a single command: `pip install -r requirements.txt`.
+### 3. Install Dependencies
+Install all required Python packages using the `requirements.txt` file.
 
-Example `requirements.txt`:
-Use code with caution.
-pandas
-numpy
-scikit-learn
-joblib
-Generated code
-#### 📄 `README.md`
-This is the front page of your project. It's a Markdown file that should explain:
-*   What the project does.
-*   The project structure.
-*   How to set up the environment (`pip install -r requirements.txt`).
-*   How to run the project (e.g., `python src/train.py`).
+```bash
+pip install -r requirements.txt
+```
 
-### **How to Use This Structure**
+### 4. Download the Dataset
+Download the NSL-KDD dataset files (`KDDTrain+.txt` and `KDDTest+.txt`) and place them inside the `data/raw/` directory. You can typically find them by searching for "NSL-KDD dataset download" from the University of New Brunswick (UNB) website.
 
-1.  **Create the Folders**: Manually create this folder structure within your main `ml_nids_project` directory.
-2.  **Place Files**:
-    *   Put the dataset files in `data/raw/`.
-    *   Write your training logic in `src/train.py`.
-    *   Write your prediction logic in `src/predict.py`.
-3.  **Run from the Top Level**: When you run your scripts from the terminal, always do it from the top-level `ml_nids_project/` directory. This ensures that the relative paths (like `data/raw/KDDTrain+.txt`) work correctly.
+## How to Run the Project
 
-**Example command to run training:**
+Make sure you are in the project's root directory (`Cyber_Project/`) and your virtual environment is activated for all commands.
+
+### Step 1: Train the Model
+This script will load the dataset, preprocess it, train the XGBoost model, and save the final pipeline to the `models/` directory.
+
 ```bash
 python src/train.py
+```
+
+### Step 2: Run the Real-Time Detector
+This script uses `scapy` to monitor your live network traffic and classify packets in real-time. **This requires administrator/root privileges.**
+
+*   **On Windows:** Open Command Prompt or PowerShell **as an Administrator** and run:
+    ```bash
+    python src/realtime_detector.py
+    ```
+*   **On macOS/Linux:**
+    ```bash
+    sudo python src/realtime_detector.py
+    ```
+Press `Ctrl+C` to stop the detector.
+
+### Step 3: Run the API Server
+This script will start a local web server, making your model available for on-demand predictions.
+
+```bash
+python src/api.py
+```
+Leave this terminal running. The API will be available at `http://127.0.0.1:5000`.
+
+### Step 4: Test the API
+Open a **new, separate terminal** and use a tool like `curl` to send requests to your running API.
+
+*   **Test with an attack-like sample:**
+    ```bash
+    curl -X POST -H "Content-Type: application/json" -d '{ "protocol_type": "tcp", "service": "private", "flag": "S0", "count": 200, "serror_rate": 1.0 }' http://127.0.0.1:5000/predict
+    ```
+    *Expected Response:* `{"is_attack":1,"prediction":"Attack"}`
+
+*   **Test with a normal-like sample:**
+    ```bash
+    curl -X POST -H "Content-Type: application/json" -d '{ "protocol_type": "tcp", "service": "http", "flag": "SF", "src_bytes": 300, "dst_bytes": 5000 }' http://127.0.0.1:5000/predict
+    ```
+    *Expected Response:* `{"is_attack":0,"prediction":"Normal"}`

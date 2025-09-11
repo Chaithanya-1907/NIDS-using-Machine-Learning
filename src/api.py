@@ -23,6 +23,7 @@ else:
 # Get the list of feature names the model expects
 feature_columns = [col for col in COLUMNS if col not in ['attack', 'difficulty']]
 
+
 # 3. Define the prediction endpoint
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -46,12 +47,12 @@ def predict():
         input_df = input_df.reindex(columns=feature_columns, fill_value=0)
     except Exception as e:
         return jsonify({"error": f"Failed to create DataFrame: {e}"}), 400
-        
+
     # 6. Make a prediction
     try:
         prediction_numeric = model.predict(input_df)
         result = 'Attack' if prediction_numeric[0] == 1 else 'Normal'
-        
+
         # 7. Return the result as JSON
         return jsonify({
             "prediction": result,
@@ -60,10 +61,12 @@ def predict():
     except Exception as e:
         return jsonify({"error": f"Prediction failed: {e}"}), 500
 
+
 # 8. Define a simple root endpoint to confirm the API is running
 @app.route('/', methods=['GET'])
 def index():
     return "NIDS Prediction API is running. Use the /predict endpoint for predictions."
+
 
 # 9. Run the Flask app
 if __name__ == '__main__':

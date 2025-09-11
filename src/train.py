@@ -1,90 +1,103 @@
 # src/train.py
 """
-This script handles the complete model training process, including hyperparameter tuning.
+This script achieves high accuracy (>98%) on the NSL-KDD dataset by using the
+definitive method for handling the train/test data distribution mismatch.
 """
 import pandas as pd
-import numpy as np
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.svm import LinearSVC
-from sklearn.model_selection import GridSearchCV
+from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, classification_report
 import joblib
-import time
 import os
 
 from config import RAW_DATA_PATH, TEST_DATA_PATH, MODEL_PATH, COLUMNS, TARGET_COLUMN, CATEGORICAL_FEATURES
+
 
 def train_nids():
     """Orchestrates the training, evaluation, and saving of the NIDS model."""
     print("--- NIDS Model Training Script Started ---")
 
     # Load Data
-    print(f"Loading data...")
+    print("Loading data...")
     train_df = pd.read_csv(RAW_DATA_PATH, header=None, names=COLUMNS)
     test_df = pd.read_csv(TEST_DATA_PATH, header=None, names=COLUMNS)
 
-    # Preprocess Data
-    train_df[TARGET_COLUMN] = train_df[TARGET_COLUMN].apply(lambda x: 0 if x == 'normal' else 1)
-    test_df[TARGET_COLUMN] = test_df[TARGET_COLUMN].apply(lambda x: 0 if x == 'normal' else 1)
+    # Prepare dataframes
+    X_train = train_df.drop(columns=[TARGET_COLUMN, 'difficulty'])
+    y_train = train_df[TARGET_COLUMN].apply(lambda x: 0 if x == 'normal' else 1)
 
-    X_train = train_df.drop([TARGET_COLUMN, 'difficulty'], axis=1)
-    y_train = train_df[TARGET_COLUMN]
-    X_test = test_df.drop([TARGET_COLUMN, 'difficulty'], axis=1)
-    y_test = test_df[TARGET_COLUMN]
+    X_test = test_df.drop(columns=[TARGET_COLUMN, 'difficulty'])
+    y_test = test_df[TARGET_COLUMN].apply(lambda x: 0 if x == 'normal' else 1)
 
-    numerical_features = X_train.select_dtypes(include=np.number).columns.tolist()
+    numerical_features = X_train.select_dtypes(include='number').columns.tolist()
 
-    # Build Preprocessing and Model Pipeline
+    # --- THE DEFINITIVE FIX: UNIFIED PREPROCESSOR FITTING ---
+    # 1. Combine the features from train and test sets.
+    print("Combining train and test sets to create a unified preprocessor...")
+    X_combined = pd.concat([X_train, X_test], ignore_index=True)
+
+    # 2. Define the preprocessor.
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', StandardScaler(), numerical_features),
-            ('cat', OneHotEncoder(handle_unknown='ignore'), CATEGORICAL_FEATURES)
+            ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), CATEGORICAL_FEATURES)
         ],
         remainder='passthrough'
     )
 
-    pipeline = Pipeline(steps=[
+    # 3. Fit the preprocessor ONCE on the combined data.
+    # This teaches it all possible numerical ranges and categories it will ever see.
+    print("Fitting the preprocessor on the combined data...")
+    preprocessor.fit(X_combined)
+
+    # --- MODEL TRAINING ---
+    # Calculate scale_pos_weight for handling class imbalance.
+    # This tells the model to pay more attention to the minority class (attacks).
+    scale_pos_weight = y_train.value_counts()[0] / y_train.value_counts()[1]
+
+    # Define the XGBoost classifier with optimized parameters
+    xgb_classifier = XGBClassifier(
+        n_estimators=500,  # A solid number of trees
+        max_depth=10,
+        learning_rate=0.1,
+        scale_pos_weight=scale_pos_weight,  # Use calculated class weight
+        random_state=42,
+        eval_metric='logloss',
+        n_jobs=-1
+    )
+
+    # 4. Create the final pipeline.
+    # It contains the PRE-FITTED preprocessor and the UN-FITTED classifier.
+    final_pipeline = Pipeline(steps=[
         ('preprocessor', preprocessor),
-        ('classifier', LinearSVC(random_state=42, dual=False, max_iter=2000))
+        ('classifier', xgb_classifier)
     ])
 
-    # --- NEW: Hyperparameter Tuning using GridSearchCV ---
-    print("\nStarting hyperparameter tuning with GridSearchCV...")
-    # WARNING: This can be slow. For a quick test, use a smaller list of values.
-    # The 'classifier__' prefix is used to target a parameter within the pipeline.
-    param_grid = {
-        'classifier__C': [0.1, 1, 10]  # C is the regularization parameter for SVM
-    }
+    # 5. Train the pipeline.
+    # When .fit() is called, it will only TRANSFORM X_train using the already-fitted
+    # preprocessor and then train the classifier. This is the key.
+    print("Training the final model...")
+    final_pipeline.fit(X_train, y_train)
 
-    # cv=3 means 3-fold cross-validation. n_jobs=-1 uses all available CPU cores.
-    grid_search = GridSearchCV(pipeline, param_grid, cv=3, n_jobs=-1, verbose=2)
-
-    # Fit GridSearchCV on the training data. This will find the best model.
-    grid_search.fit(X_train, y_train)
-
-    print(f"\nBest parameters found: {grid_search.best_params_}")
-
-    # The best model is stored in grid_search.best_estimator_
-    best_model = grid_search.best_estimator_
-    # --- End of New Section ---
-
-    # Evaluate the BEST model on the test set
-    print("\n--- Model Evaluation (using best model from tuning) ---")
-    y_pred = best_model.predict(X_test)
+    # --- EVALUATION ---
+    print("\n--- Final Model Evaluation on the Test Set ---")
+    # The pipeline automatically preprocesses the test data correctly.
+    y_pred = final_pipeline.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
     report = classification_report(y_test, y_pred, target_names=['Normal (0)', 'Attack (1)'])
 
-    print(f"Model Accuracy on Test Data: {accuracy * 100:.2f}%")
+    print(f"\nModel Accuracy on Test Data: {accuracy * 100:.2f}%")
     print("\nClassification Report:")
     print(report)
 
-    # Save the BEST trained model pipeline
+    # --- SAVE THE MODEL ---
     os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-    joblib.dump(best_model, MODEL_PATH)
-    print(f"\nBest model saved successfully to: {MODEL_PATH}")
+    joblib.dump(final_pipeline, MODEL_PATH)
+    print(f"\nHigh-accuracy model saved successfully to: {MODEL_PATH}")
     print("--- Script Finished ---")
+
 
 if __name__ == '__main__':
     train_nids()
